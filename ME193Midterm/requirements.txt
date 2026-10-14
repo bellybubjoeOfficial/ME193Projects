@@ -1,0 +1,6 @@
+pygame==2.6.1            # game.py, sound.py, racquet_input.py -- game loop, rendering, audio mixer
+numpy==2.5.4             # ball.py (via paddle_view), paddle_view.py, sound.py -- vector/array math
+legoeducation==1.1.1     # real_racquet_input.py -- BLE Double Motor IMU (--real mode)
+opencv-python==5.0.0.93  # real_racquet_input.py, apriltag_detector.py -- camera + AprilTag (--real mode)
+mediapipe==0.10.35       # arm_tracker.py -- hand/wrist tracking (--real mode)
+paho-mqtt>=2.0           # mqttlib.py, score_mqtt.py -- live score publishing
