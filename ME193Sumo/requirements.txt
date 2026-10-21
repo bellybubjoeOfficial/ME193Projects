@@ -1,0 +1,7 @@
+# Install with: ~/.venvs/me193/bin/python -m pip install -r requirements.txt
+legoeducation==1.2.0     # PINNED to match our hubs' firmware (RPC 2.3.x). Major.minor must match:
+                         # 1.1.1 = RPC 2.0 (old firmware), 1.2.0 = RPC 2.3. Other teams' hubs
+                         # may be on 2.0 -- that's why config.py pins our Connection Card.
+pygame==2.6.1            # Xbox controller (SDL GameController) + sound
+numpy>=2.0               # sound synthesis
+paho-mqtt>=2.0           # UNO Q sensor link
