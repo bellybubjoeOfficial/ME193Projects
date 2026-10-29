@@ -1,0 +1,7 @@
+trained_at,sessions_stand,sessions_walk,sessions_run,sessions_bike,windows,rf_all_macro_f1,model2_macro_f1,model2_features,augmented,model1_axis,model1_depth,model1_macro_f1,sessions_sit,sessions_airbike
+2026-10-27T14:30:56,4,2,0,2.0,48,0.92,1.0,10,False,x,2,0.68,,
+2026-10-27T14:34:58,4,3,2,2.0,66,0.6841,0.7479,10,True,y,3,0.6187,,
+2026-10-27T14:53:38,4,3,2,2.0,66,0.6841,0.7479,10,True,y,3,0.6187,,
+2026-10-28T02:17:10,5,4,2,,152,0.6461,0.6989,71,True,y,3,0.3811,6.0,3.0
+2026-10-28T02:24:00,5,5,2,,164,0.7139,0.7924,20,True,y,3,0.3343,7.0,3.0
+2026-10-29T03:51:39,6,5,2,,170,0.755,0.7706,15,True,y,3,0.4658,7.0,3.0

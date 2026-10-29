@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Activity HUD</title>
+<!-- Served by scripts/dashboard.py on the UNO Q. Fonts fall back to system fonts when offline. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: dark;
+  --surface: #050b14;
+  --panel: rgba(12, 34, 56, 0.42);
+  --hud: #5ee7ff;                 /* HUD chrome: frames, glow, headline */
+  --hud-dim: rgba(94, 231, 255, 0.32);
+  --hud-faint: rgba(94, 231, 255, 0.10);
+  --text-primary: #e8f6ff;
+  --text-secondary: #9fc3d6;
+  --text-muted: #5f8297;
+  --warn: #ffb547;
+  /* Data series: validated dark-mode categorical steps (dataviz reference palette).
+     Each series also has its own dash pattern + direct label, so colour is never the only cue. */
+  --stand: #3987e5;
+  --walk: #199e70;
+  --run: #d95926;
+  --airbike: #c98500;
+  --sit: #d55181;
+  --display: "Orbitron", "Eurostile", "Segoe UI", system-ui, sans-serif;
+  --body: "Rajdhani", "Segoe UI", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html { background: var(--surface); }
+html, body { margin: 0; }
+body { min-height: 100vh; }
+body {
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(30, 110, 160, 0.22), transparent 60%),
+    linear-gradient(var(--hud-faint) 1px, transparent 1px) 0 0 / 40px 40px,
+    linear-gradient(90deg, var(--hud-faint) 1px, transparent 1px) 0 0 / 40px 40px,
+    var(--surface);
+  color: var(--text-primary);
+  font-family: var(--body);
+  font-size: 16px;
+  overflow-x: hidden;
+}
+/* scanlines + slow sweep: the "projected hologram" look */
+body::before {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 50;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,0.18) 0 1px, transparent 1px 3px);
+  mix-blend-mode: multiply;
+}
+body::after {
+  content: ""; position: fixed; left: 0; right: 0; height: 30vh; top: -30vh; pointer-events: none; z-index: 49;
+  background: linear-gradient(180deg, transparent, rgba(94, 231, 255, 0.06), transparent);
+  animation: sweep 7s linear infinite;
+}
+@keyframes sweep { to { top: 110vh; } }
+@media (prefers-reduced-motion: reduce) { body::after, .ring-deco, .word.glitch { animation: none !important; } }
+
+.wrap { max-width: 1240px; margin: 0 auto; padding: 18px 16px 40px; }
+
+/* ---- header ---- */
+header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--hud-dim); padding-bottom: 10px; margin-bottom: 18px;
+}
+.brand { font-family: var(--display); font-weight: 700; letter-spacing: 0.28em; font-size: 15px; color: var(--hud);
+  text-shadow: 0 0 12px rgba(94,231,255,0.6); }
+.brand small { display: block; font-family: var(--body); letter-spacing: 0.3em; font-size: 11px; color: var(--text-muted); font-weight: 500; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; }
+.chip { border: 1px solid var(--hud-dim); padding: 4px 10px; color: var(--text-secondary); background: var(--panel);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+.chip b { color: var(--text-primary); font-weight: 600; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--text-muted); vertical-align: 1px; }
+.dot.on { background: var(--hud); box-shadow: 0 0 8px var(--hud); animation: pulse 1.4s ease-in-out infinite; }
+.dot.warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+@keyframes pulse { 50% { opacity: 0.35; } }
+
+/* ---- panels ---- */
+.grid { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; }
+.grid > * { min-width: 0; }   /* let panels shrink below their content's width (phones) */
+.panel {
+  position: relative; background: var(--panel); border: 1px solid var(--hud-dim);
+  backdrop-filter: blur(3px); padding: 16px 18px;
+  box-shadow: inset 0 0 30px rgba(94,231,255,0.05), 0 0 24px rgba(94,231,255,0.06);
+}
+/* corner brackets */
+.panel::before, .panel::after {
+  content: ""; position: absolute; width: 18px; height: 18px; border: 2px solid var(--hud); pointer-events: none;
+  filter: drop-shadow(0 0 4px var(--hud));
+}
+.panel::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.panel::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+.ptitle { font-family: var(--display); font-size: 11px; letter-spacing: 0.32em; overflow-wrap: anywhere; color: var(--text-muted); text-transform: uppercase; margin: 0 0 12px; }
+.ptitle::before { content: "▸ "; color: var(--hud); }
+
+/* ---- banner ---- */
+.banner { grid-column: 1 / -1; text-align: center; padding: 22px 18px 18px; overflow: hidden; }
+.banner .ptitle { text-align: left; }
+.word {
+  font-family: var(--display); font-weight: 900; font-size: clamp(40px, 12vw, 150px); line-height: 1; letter-spacing: 0.12em;
+  color: var(--hud); margin: 4px 0 10px; padding-left: 0.12em;
+  text-shadow: 0 0 6px rgba(94,231,255,0.9), 0 0 28px rgba(94,231,255,0.55), 0 0 70px rgba(94,231,255,0.3);
+}
+.word.idle { color: var(--text-muted); text-shadow: none; font-size: clamp(36px, 8vw, 84px); }
+.word.glitch { animation: glitch 0.45s steps(2) 1; }
+@keyframes glitch {
+  0% { transform: translate(0); opacity: 0.3; clip-path: inset(0 0 60% 0); }
+  25% { transform: translate(-6px, 2px); clip-path: inset(40% 0 20% 0); }
+  50% { transform: translate(5px, -2px); opacity: 1; clip-path: inset(10% 0 50% 0); }
+  75% { transform: translate(-2px, 1px); clip-path: inset(0 0 0 0); }
+  100% { transform: translate(0); }
+}
+.subline { display: flex; justify-content: center; gap: 8px 22px; flex-wrap: wrap; color: var(--text-secondary);
+  font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.subline b { color: var(--text-primary); font-weight: 600; }
+.swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+.lost { color: var(--warn); }
+
+/* ---- ring gauge ---- */
+.gauge { display: flex; flex-direction: column; align-items: center; }
+.gauge svg { width: 100%; max-width: 240px; height: auto; overflow: visible; }
+.ring-deco { transform-origin: 120px 120px; animation: spin 24s linear infinite; }
+.ring-deco.rev { animation-duration: 40s; animation-direction: reverse; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.gauge .val { font-family: var(--display); font-weight: 700; font-size: 40px; fill: var(--text-primary); font-variant-numeric: tabular-nums; }
+.gauge .cap { font-size: 12px; letter-spacing: 0.3em; fill: var(--text-muted); }
+#ringArc { transition: stroke-dashoffset 0.6s ease, stroke 0.3s; filter: drop-shadow(0 0 6px var(--hud)); }
+
+/* ---- probability bars ---- */
+.bars { display: grid; gap: 14px; }
+.bar-row { display: grid; grid-template-columns: 84px 1fr 56px; align-items: center; gap: 12px; }
+.bar-name { font-family: var(--display); font-size: 13px; letter-spacing: 0.18em; color: var(--text-secondary); text-transform: uppercase; }
+.bar-row.top .bar-name { color: var(--text-primary); }
+.bar-track { height: 18px; position: relative; background: rgba(94,231,255,0.05); border: 1px solid var(--hud-faint);
+  background-image: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), var(--hud-faint) calc(10% - 1px) 10%); }
+.bar-fill { position: absolute; left: 0; top: 2px; bottom: 2px; width: 0; border-radius: 0 4px 4px 0;
+  transition: width 0.5s cubic-bezier(.2,.8,.2,1); }
+.bar-row.top .bar-fill { filter: drop-shadow(0 0 6px currentColor); }
+.bar-val { text-align: right; font-variant-numeric: tabular-nums; font-size: 18px; font-weight: 600; }
+
+/* ---- chart ---- */
+.chart-panel { grid-column: 1 / -1; }
+.legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 8px; }
+.legend svg { vertical-align: middle; margin-right: 6px; }
+.chart-box { position: relative; height: 280px; }
+canvas { width: 100%; height: 100%; display: block; }
+.tip { position: absolute; pointer-events: none; display: none; min-width: 150px; padding: 8px 10px; font-size: 14px;
+  background: rgba(5, 16, 28, 0.94); border: 1px solid var(--hud); box-shadow: 0 0 16px rgba(94,231,255,0.25);
+  font-variant-numeric: tabular-nums; }
+.tip .t { color: var(--text-muted); font-size: 12px; letter-spacing: 0.15em; margin-bottom: 4px; }
+.tip div.r { display: flex; justify-content: space-between; gap: 14px; }
+
+/* ---- controls ---- */
+.controls { grid-column: 1 / -1; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+button {
+  font-family: var(--display); font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--hud); background: rgba(94,231,255,0.06); border: 1px solid var(--hud); padding: 11px 18px; cursor: pointer;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  transition: background 0.15s, box-shadow 0.15s;
+}
+button:hover { background: rgba(94,231,255,0.18); box-shadow: 0 0 18px rgba(94,231,255,0.35); }
+button:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 3px; }
+button.active { background: var(--hud); color: var(--surface); }
+button.danger { color: var(--warn); border-color: var(--warn); }
+.msg { color: var(--text-secondary); font-size: 14px; letter-spacing: 0.08em; }
+
+details { grid-column: 1 / -1; }
+summary { cursor: pointer; font-family: var(--display); font-size: 11px; letter-spacing: 0.32em; color: var(--text-muted); text-transform: uppercase; }
+table { width: 100%; border-collapse: collapse; margin-top: 10px; font-variant-numeric: tabular-nums; font-size: 14px; }
+th, td { padding: 5px 8px; text-align: right; border-bottom: 1px solid var(--hud-faint); }
+th:first-child, td:first-child, th:nth-child(2), td:nth-child(2), th:nth-child(3), td:nth-child(3) { text-align: left; }
+th { color: var(--text-muted); font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; font-size: 12px; }
+.table-scroll { overflow-x: auto; }
+
+@media (max-width: 760px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .chart-box { height: 220px; }
+  .bar-row { grid-template-columns: 76px minmax(0, 1fr) 44px; gap: 8px; }
+  .bar-name { font-size: 11px; letter-spacing: 0.1em; white-space: nowrap; }
+  .word { letter-spacing: 0.06em; padding-left: 0.06em; }
+  .ptitle { letter-spacing: 0.2em; }
+  .panel { padding: 14px 12px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">KINETIC&nbsp;//&nbsp;ANALYSIS<small>ankle IMU · activity recognition · UNO Q</small></div>
+    <div class="chips">
+      <span class="chip"><span id="linkDot" class="dot"></span><span id="linkText">connecting</span></span>
+      <span class="chip">model <b id="modelChip">—</b></span>
+      <span class="chip">windows <b id="nChip">0</b></span>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="panel banner" aria-live="polite">
+      <p class="ptitle">Classification</p>
+      <div id="word" class="word idle">STANDBY</div>
+      <div class="subline" id="subline">live mode off · engage a model below</div>
+    </section>
+
+    <section class="panel gauge">
+      <p class="ptitle" style="align-self:flex-start">Confidence</p>
+      <svg viewBox="0 0 240 240" role="img" aria-labelledby="gaugeLabel">
+        <title id="gaugeLabel">Probability of the most likely activity</title>
+        <circle class="ring-deco" cx="120" cy="120" r="112" fill="none" stroke="var(--hud-dim)" stroke-width="1" stroke-dasharray="2 6"/>
+        <circle class="ring-deco rev" cx="120" cy="120" r="104" fill="none" stroke="var(--hud-dim)" stroke-width="3" stroke-dasharray="40 14 6 14"/>
+        <circle cx="120" cy="120" r="88" fill="none" stroke="var(--hud-faint)" stroke-width="10"/>
+        <circle id="ringArc" cx="120" cy="120" r="88" fill="none" stroke="var(--hud)" stroke-width="10" stroke-linecap="round"
+                transform="rotate(-90 120 120)" stroke-dasharray="552.9" stroke-dashoffset="552.9"/>
+        <text x="120" y="126" text-anchor="middle" class="val" id="ringVal">--</text>
+        <text x="120" y="152" text-anchor="middle" class="cap" id="ringCap">NO SIGNAL</text>
+      </svg>
+    </section>
+
+    <section class="panel">
+      <p class="ptitle">Class probabilities · this window</p>
+      <div class="bars" id="bars"></div>
+      <p class="msg" style="margin:16px 0 0">Banner = majority of the last 3 windows. Bars = the newest window alone.</p>
+    </section>
+
+    <section class="panel chart-panel">
+      <p class="ptitle">Probability timeline · last 90 s</p>
+      <div class="legend" id="legend"></div>
+      <div class="chart-box" id="chartBox">
+        <canvas id="chart" aria-label="Probability of each activity over the last 90 seconds; data log below has the numbers"></canvas>
+        <div class="tip" id="tip"></div>
+      </div>
+    </section>
+
+    <section class="controls">
+      <button id="btn2" data-model="model2">Engage model 2 · forest</button>
+      <button id="btn1" data-model="model1">Engage model 1 · peak</button>
+      <button id="btnStop" class="danger">Disengage</button>
+      <span class="msg" id="ctrlMsg"></span>
+    </section>
+
+    <details class="panel">
+      <summary>Data log</summary>
+      <div class="table-scroll"><table id="log"><thead></thead><tbody></tbody></table></div>
+    </details>
+  </main>
+</div>
+
+<script>
+// The class list comes from the board (/api/status), so the page follows whatever
+// the models were trained on. Colour + dash pattern are fixed per class, never by rank.
+let CLASSES = ["sit", "stand", "walk", "run", "airbike"];
+const css = getComputedStyle(document.documentElement);
+const color = c => css.getPropertyValue("--" + c).trim() || "#8a9aa8";
+const DASH_BY = { stand: [], walk: [10, 5], run: [3, 4], airbike: [14, 4, 3, 4], sit: [2, 3, 8, 3] };
+const COLOR = new Proxy({}, { get: (_, c) => color(c) });
+const DASH = new Proxy({}, { get: (_, c) => DASH_BY[c] || [6, 6] });   // secondary encoding
+const WINDOW_S = 90, STALE_S = 5, POLL_MS = 400;
+const $ = id => document.getElementById(id);
+
+let history = [], status = {}, serverNow = 0, lastWord = null, lastOk = 0;
+
+// ---- static pieces (rebuilt if the class list changes) ------------------------
+let builtFor = "";
+function buildStatic() {
+if (builtFor === CLASSES.join()) return;
+builtFor = CLASSES.join();
+$("bars").innerHTML = CLASSES.map(c => `
+  <div class="bar-row" id="row-${c}">
+    <span class="bar-name"><span class="swatch" style="background:${COLOR[c]}"></span>${c}</span>
+    <div class="bar-track"><div class="bar-fill" id="fill-${c}" style="background:${COLOR[c]};color:${COLOR[c]}"></div></div>
+    <span class="bar-val" id="val-${c}">--</span>
+  </div>`).join("");
+$("legend").innerHTML = CLASSES.map(c => `<span><svg width="30" height="10"><line x1="0" y1="5" x2="30" y2="5"
+  stroke="${COLOR[c]}" stroke-width="2.5" stroke-dasharray="${DASH[c].join(" ")}"/></svg>${c}</span>`).join("");
+$("log").querySelector("thead").innerHTML =
+  `<tr><th>age</th><th>shown</th><th>window</th>${CLASSES.map(c => `<th>${c}</th>`).join("")}</tr>`;
+}
+buildStatic();
+
+// ---- polling ------------------------------------------------------------------
+async function poll() {
+  try {
+    const r = await fetch("/api/status", { cache: "no-store" });
+    const d = await r.json();
+    status = d.status || {}; history = d.history || []; serverNow = d.now; lastOk = Date.now();
+    if (Array.isArray(d.classes) && d.classes.length) { CLASSES = d.classes; buildStatic(); }
+    render();
+  } catch (e) {
+    setLink("warn", "server offline");
+  }
+}
+setInterval(poll, POLL_MS);
+poll();
+// keep the link chip honest if the server dies between polls
+setInterval(() => { if (Date.now() - lastOk > 3000) setLink("warn", "server offline"); }, 1000);
+
+function setLink(kind, text) {
+  $("linkDot").className = "dot " + (kind === "on" ? "on" : kind === "warn" ? "warn" : "");
+  $("linkText").textContent = text;
+}
+
+// ---- render -----------------------------------------------------------------------
+function render() {
+  const live = status.state === "live";
+  const age = live && status.updated_at ? serverNow - status.updated_at : null;
+  const stale = live && (age === null || age > STALE_S);
+  const hasPred = live && status.label;
+
+  setLink(live && !stale ? "on" : stale ? "warn" : "", live ? (stale ? "signal lost" : "live") : (status.state || "no status"));
+  $("modelChip").textContent = live ? (status.model === "model1" ? "1 · PEAK" : "2 · FOREST") : "—";
+  $("nChip").textContent = hasPred ? status.n : 0;
+  for (const b of ["btn1", "btn2"]) $(b).classList.toggle("active", live && status.model === $(b).dataset.model);
+
+  // banner
+  const w = $("word");
+  let word = "STANDBY";
+  if (live && !hasPred) word = "ACQUIRING";
+  if (hasPred) word = status.label.toUpperCase();
+  if (word !== lastWord) { w.classList.remove("glitch"); void w.offsetWidth; w.classList.add("glitch"); lastWord = word; }
+  w.textContent = word;
+  w.classList.toggle("idle", !hasPred);
+
+  if (hasPred) {
+    const p = status.proba || {};
+    const top = status.label;
+    $("subline").innerHTML =
+      `<span><span class="swatch" style="background:${COLOR[top] || "var(--hud)"}"></span>confidence <b>${pct(p[top])}</b></span>` +
+      `<span>window <b>${status.raw_label}</b></span>` +
+      `<span>vote <b>${Math.round(status.vote_fraction * 3)}/3</b></span>` +
+      (stale ? `<span class="lost">no update for ${age.toFixed(0)} s</span>` : "");
+  } else if (live) {
+    $("subline").textContent = "live mode on · first prediction after 2.56 s of data";
+  } else if (status.state === "recording" || status.state === "countdown") {
+    $("subline").textContent = `the board is ${status.state} (${status.activity}) · live mode paused`;
+  } else {
+    $("subline").textContent = status.state === "error" ? `error: ${status.error}` : "live mode off · engage a model below";
+  }
+
+  // bars + ring (newest window)
+  const p = hasPred ? status.proba : {};
+  const best = hasPred ? CLASSES.reduce((a, c) => ((p[c] ?? -1) > (p[a] ?? -1) ? c : a), CLASSES[0]) : null;
+  for (const c of CLASSES) {
+    const v = p[c];
+    $("fill-" + c).style.width = v == null ? "0" : (v * 100).toFixed(1) + "%";
+    $("val-" + c).textContent = v == null ? "--" : pct(v);
+    $("row-" + c).classList.toggle("top", c === best);
+  }
+  const conf = hasPred ? (status.proba[status.label] ?? 0) : 0;
+  $("ringArc").setAttribute("stroke-dashoffset", (552.9 * (1 - conf)).toFixed(1));
+  $("ringVal").textContent = hasPred ? pct(conf) : "--";
+  $("ringCap").textContent = hasPred ? status.label.toUpperCase() : (live ? "ACQUIRING" : "NO SIGNAL");
+
+  drawChart();
+  renderLog();
+}
+
+const pct = v => v == null ? "--" : Math.round(v * 100) + "%";
+
+// ---- chart --------------------------------------------------------------------------
+const canvas = $("chart"), ctx = canvas.getContext("2d");
+let hoverX = null;
+const PAD = { l: 44, r: 64, t: 10, b: 26 };
+
+function geometry() {
+  const dpr = window.devicePixelRatio || 1, W = canvas.clientWidth, H = canvas.clientHeight;
+  if (canvas.width !== W * dpr || canvas.height !== H * dpr) { canvas.width = W * dpr; canvas.height = H * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const x = age => PAD.l + (1 - age / WINDOW_S) * (W - PAD.l - PAD.r);
+  const y = v => PAD.t + (1 - v) * (H - PAD.t - PAD.b);
+  return { W, H, x, y };
+}
+
+function points() {
+  return history.map(h => ({ ...h, age: serverNow - h.t })).filter(h => h.age <= WINDOW_S && h.age >= -2);
+}
+
+function drawChart() {
+  const { W, H, x, y } = geometry();
+  ctx.clearRect(0, 0, W, H);
+  // recessive grid + axis labels
+  ctx.font = "12px Rajdhani, system-ui"; ctx.fillStyle = css.getPropertyValue("--text-muted");
+  ctx.strokeStyle = "rgba(94,231,255,0.10)"; ctx.lineWidth = 1;
+  for (const v of [0, 0.25, 0.5, 0.75, 1]) {
+    ctx.beginPath(); ctx.moveTo(PAD.l, y(v)); ctx.lineTo(W - PAD.r, y(v)); ctx.stroke();
+    ctx.textAlign = "right"; ctx.textBaseline = "middle"; ctx.fillText(Math.round(v * 100) + "%", PAD.l - 8, y(v));
+  }
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  for (let s = 0; s <= WINDOW_S; s += 15) {
+    ctx.textAlign = s === 0 ? "right" : "center";
+    ctx.fillText(s === 0 ? "now" : `-${s}s`, x(s), H - PAD.b + 8);
+  }
+
+  const pts = points();
+  if (pts.length === 0) {
+    ctx.fillStyle = css.getPropertyValue("--text-muted"); ctx.textBaseline = "middle"; ctx.font = "14px Rajdhani, system-ui";
+    ctx.fillText("awaiting telemetry", (PAD.l + W - PAD.r) / 2, (PAD.t + H - PAD.b) / 2);
+    return;
+  }
+  // series: 2px lines with a soft glow; end labels in text colour beside a coloured mark
+  const ends = [];
+  for (const c of CLASSES) {
+    ctx.save();
+    ctx.strokeStyle = COLOR[c]; ctx.lineWidth = 2; ctx.setLineDash(DASH[c]);
+    ctx.shadowColor = COLOR[c]; ctx.shadowBlur = 8; ctx.lineJoin = "round";
+    ctx.beginPath();
+    pts.forEach((p, i) => { const v = p.proba[c] ?? 0; i ? ctx.lineTo(x(p.age), y(v)) : ctx.moveTo(x(p.age), y(v)); });
+    ctx.stroke(); ctx.restore();
+    const last = pts[pts.length - 1];
+    ends.push({ c, y: y(last.proba[c] ?? 0), x: x(last.age) });
+  }
+  // de-collide end labels (min 15px apart)
+  ends.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 15) ends[i].y = ends[i - 1].y + 15;
+  ctx.font = "600 13px Rajdhani, system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  for (const e of ends) {
+    ctx.fillStyle = COLOR[e.c]; ctx.fillRect(e.x + 6, e.y - 4, 8, 8);
+    ctx.fillStyle = css.getPropertyValue("--text-primary"); ctx.fillText(e.c, e.x + 18, e.y);
+  }
+  // hover crosshair + markers
+  if (hoverX !== null) {
+    let near = pts[0];
+    for (const p of pts) if (Math.abs(x(p.age) - hoverX) < Math.abs(x(near.age) - hoverX)) near = p;
+    const px = x(near.age);
+    ctx.strokeStyle = "rgba(94,231,255,0.6)"; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(px, PAD.t); ctx.lineTo(px, H - PAD.b); ctx.stroke(); ctx.setLineDash([]);
+    for (const c of CLASSES) {
+      ctx.beginPath(); ctx.arc(px, y(near.proba[c] ?? 0), 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = COLOR[c]; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = css.getPropertyValue("--surface"); ctx.stroke();
+    }
+    const tip = $("tip");
+    tip.innerHTML = `<div class="t">${near.age.toFixed(1)} s ago · shown ${near.label.toUpperCase()}</div>` +
+      CLASSES.map(c => `<div class="r"><span><span class="swatch" style="background:${COLOR[c]}"></span>${c}</span><b>${pct(near.proba[c])}</b></div>`).join("");
+    tip.style.display = "block";
+    const left = px + 14 + tip.offsetWidth > W ? px - tip.offsetWidth - 14 : px + 14;
+    tip.style.left = left + "px"; tip.style.top = PAD.t + "px";
+  } else {
+    $("tip").style.display = "none";
+  }
+}
+const box = $("chartBox");
+box.addEventListener("pointermove", e => { hoverX = e.clientX - box.getBoundingClientRect().left; drawChart(); });
+box.addEventListener("pointerleave", () => { hoverX = null; drawChart(); });
+window.addEventListener("resize", drawChart);
+
+// ---- data log (table view) ------------------------------------------------------------
+function renderLog() {
+  const rows = points().slice(-15).reverse();
+  $("log").querySelector("tbody").innerHTML = rows.map(p =>
+    `<tr><td>${p.age.toFixed(1)} s</td><td>${p.label}</td><td>${p.raw_label}</td>${CLASSES.map(c => `<td>${pct(p.proba[c])}</td>`).join("")}</tr>`
+  ).join("") || `<tr><td colspan="${3 + CLASSES.length}" style="text-align:left;color:var(--text-muted)">no predictions yet</td></tr>`;
+}
+
+// ---- controls ---------------------------------------------------------------------------
+async function post(path, label) {
+  $("ctrlMsg").textContent = label + "…";
+  try {
+    const r = await fetch(path, { method: "POST" });
+    const d = await r.json();
+    $("ctrlMsg").textContent = r.ok ? label + ": sent" : (d.error || "failed");
+  } catch (e) { $("ctrlMsg").textContent = "server offline"; }
+  poll();
+}
+$("btn1").onclick = () => post("/api/live/model1", "engaging model 1");
+$("btn2").onclick = () => post("/api/live/model2", "engaging model 2");
+$("btnStop").onclick = () => post("/api/stop", "disengaging");
+</script>
+</body>
+</html>

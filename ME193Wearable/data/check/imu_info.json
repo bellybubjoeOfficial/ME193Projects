@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "bus": "Wire2",
+  "addr": 104,
+  "who_am_i": 104,
+  "accel_cfg": 24,
+  "gyro_cfg": 24,
+  "scan": {
+    "Wire2": [
+      104
+    ],
+    "Wire1": []
+  },
+  "raw": "ok=1;bus=Wire2;addr=0x68;who=0x68;accel_cfg=0x18;gyro_cfg=0x18;scan=Wire2:0x68|Wire1:",
+  "saved_at": 1793246567.92049
+}
