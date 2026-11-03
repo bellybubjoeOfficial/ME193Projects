@@ -1,0 +1,13 @@
+# Install with: ~/.venvs/me193walk/bin/python -m pip install -r requirements.txt
+# Python 3.14: mediapipe 0.10.35 supports it (Tasks API only -- no mp.solutions).
+paho-mqtt>=2.0
+numpy
+pandas
+pyarrow            # parquet logs
+pyyaml
+PySide6
+pyqtgraph
+opencv-python
+mediapipe==0.10.35
+pytest
+torch              # Stage 6

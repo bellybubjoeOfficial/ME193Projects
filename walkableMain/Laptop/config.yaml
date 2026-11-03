@@ -1,0 +1,200 @@
+# ME193WalkWearable -- every tunable value lives here.
+# (Later this file becomes the parameters page in the live UI.)
+
+mqtt:
+  host: localhost # laptop runs Mosquitto; the UNO Q connects to this laptop's IP
+  port: 1883
+  keepalive_s: 10
+  topics:
+    raw: wearable/imu/raw
+    status: wearable/status
+    ping: wearable/sync/ping
+    pong: wearable/sync/pong
+    cmd: wearable/cmd
+
+imu:
+  expected_rate_hz: 100 # nominal; the real rate comes from each batch's rate_hz
+  ring_seconds: 120 # how much history the live ring buffer keeps
+  rate_window_s: 5 # window for the "measured rate" readout
+  latency_window: 200 # batches in the rolling latency median / p95
+
+sync:
+  ping_interval_s: 2.0
+  median_window: 31 # pings in the running median (~1 min at 2 s)
+  max_rtt_ms: 250 # pongs slower than this are logged but not used
+  device_clock:
+    wall # which sample clock the pong timestamps share: wall (t_wall_ns)
+    # or mono (t_mono_ns). The real UNO Q stamps pongs with its WALL
+    # clock (checked 2026-11-03), so samples convert via t_wall_ns.
+
+logging:
+  data_dir: data/sessions # relative to this folder
+  format: parquet # parquet | csv
+  flush_rows: 1000 # write to disk every N samples
+
+ui:
+  plot_window_s: 10
+  refresh_hz: 30
+  max_gaps_shown: 6
+
+fake_device: # tests/fake_unoq.py only
+  batch_size: 10 # samples per MQTT message
+  clock_offset_s: 1234.5 # device mono clock = laptop clock + this
+  drift_ppm: 20 # device crystal error
+  net_delay_ms: [2, 8] # uniform one-way delay range
+
+stage1_pass:
+  min_received_frac: 0.999
+  rate_tol_frac: 0.01
+  default_duration_s: 600
+
+# ---------------- Stage 2: webcam ----------------
+camera:
+  index: 0 # built-in webcam
+  width: 1280
+  height: 720
+  fps: 30 # requested; measured fps is what counts
+  fourcc: mp4v # mp4v always works with pip OpenCV on macOS
+  drop_factor: 1.5 # frame interval > 1.5 periods = dropped frame(s)
+  clips_dir: data/clips
+  probe_modes: # tried by `capture --probe`, best stable one wins
+    - [1920, 1080, 30]
+    - [1280, 720, 60]
+    - [1280, 720, 30]
+    - [640, 480, 30]
+
+stage2_pass:
+  default_duration_s: 300
+  fps_window_s: 10 # each 10 s window's fps must be within tol of the run mean
+  fps_tol_frac: 0.05
+  max_drops: 0
+
+# ---------------- Stage 3: vision step detector ----------------
+pose:
+  # heavy finds a legs-only (floor camera) walker in ~90% of frames vs ~50% for
+  # full (slow_walk clip, 2026-11-03); ~19 fps offline at 720p.
+  model: heavy # lite | full | heavy -- used for clips (labels)
+  live_model: full # live view needs speed (~55 fps)
+  model_dir: models
+  min_detection_confidence: 0.2
+  min_tracking_confidence: 0.2
+
+steps:
+  # footprint: a heel arrives at a new spot and stays (ignores MediaPipe's L/R swaps)
+  # heel_x: per-leg heel stops sliding forward (needs clean L/R labels + walking hips)
+  # heel_y: per-leg heel stops coming down (camera high enough to see the foot rise)
+  method: footprint
+  visibility_min: 0.5 # landmark frames below this are ignored
+  # Signals are in LEG LENGTHS (hip-to-ankle distance), so thresholds don't
+  # depend on how far you are from the camera.
+  leg_len_window: 90 # frames in the running-median leg length
+  smooth_frames: 7 # odd; centered quadratic fit (adds this/2 frames latency)
+  min_valid_in_window: 5 # need this many visible frames in the window
+  refractory_s: 0.35 # min time between strikes of the same leg
+  max_gap_frames: 4 # longer visibility gap resets the leg
+  hip_window: 15 # frames used to get walking direction from the hips
+  v_walk_min: 0.3 # hips slower than this (leg lengths/s) = not walking
+  signal: heel # heel_y only: heel | foot_lowest (lower of heel and toe)
+  footprint: # distances in leg lengths
+    spot_tol: 0.15 # a planted heel stays within this of its spot (MediaPipe jitter)
+    min_stance_frames: 7 # frames on one spot to count as a footprint (= report latency)
+    arrive_tol: 0.06 # strike frame = first frame the heel is this close to its final spot
+    min_step: 0.3 # a new footprint must be this far from recent ones ...
+    footprint_memory_s: 1.5 # ... within this window (so the return pass can reuse floor)
+    label_majority: 0.65 # below this L/R agreement in the footprint, alternate legs
+  heel_x: # all in leg lengths (per second)
+    v_arm: 1.5 # heel sliding forward this fast = swing
+    v_stop: 0.3 # strike when it slows below this ...
+    min_travel: 0.4 # ... after sliding at least this far
+  heel_y:
+    v_arm: 0.3 # heel coming down this fast
+    v_stop: 0.1 # strike when downward speed falls below this ...
+    min_travel: 0.06 # ... after dropping at least this far from swing top
+
+overlay:
+  flash_s: 0.25
+  left_color: [255, 160, 40] # BGR -- blue-ish for left
+  right_color: [40, 140, 255] # BGR -- orange for right
+
+handcheck:
+  match_tol_frames: 6 # a detection within 6 frames of a true strike = matched
+
+stage3_pass:
+  count_tol: 1 # per clip
+  median_timing_frames: 2
+
+# ---------------- Stage 4: synced recording + stomp check ----------------
+record:
+  dir: data/recordings
+  wait_sync_s: 20 # wait this long for IMU data + clock sync before filming
+  imu_trace_s: 5 # accel-magnitude trace shown in the preview
+
+stomp:
+  search_s: 30 # find the stomp in the first / last this many seconds (you may take ~20 s to get set)
+  min_g: 3.0 # |accel| - 1 g must reach this (g) to count as a stomp
+  onset_frac: 0.5 # IMU impact = where |accel| first crosses this fraction of the peak
+  video_window_s: 1.0 # look for the heel impact this far around the IMU stomp
+  min_lift: 0.08 # stomping heel must rise at least this (leg lengths)
+  ground_tol: 0.15 # impact frame = heel back within this fraction of its lift
+  max_residual_ms:
+    150 # a stomp residual beyond this is a mismatch (real ones: 5-31 ms);
+    # it is left out of sync_correction.json
+
+stage4_pass:
+  default_duration_s: 300
+  max_residual_frames: 1 # |video - IMU| at each stomp
+  max_drift_ms: 10 # end residual - start residual
+
+# ---------------- Stage 6: IMU step model ----------------
+train:
+  sessions_dir: data/recordings
+  skip_notes: [smoke] # sessions whose notes contain these words are skipped
+  require_stomp_sync: true # only sessions whose stomp check produced sync_correction.json
+  stomp_margin_s: 1.5 # ignore IMU this close to each stomp (a stomp is not a step)
+  label_sigma_s: 0.03 # each heel strike becomes a Gaussian bump this wide (target)
+  window_s: 2.56 # training window length
+  min_labeled_frac: 0.6 # windows must be mostly where the camera could see the heels
+  batch: 64
+  iterations: 2000
+  lr: 0.001
+  weight_decay: 0.0001
+  pos_weight: 5.0 # strikes are rare; weight positives up
+  channels: 32 # CNN width
+  augment_gain: 0.1 # random per-channel gain (sensor mounting differences)
+  augment_noise: 0.02 # random noise (in normalized units)
+  threshold: 0.4 # strike probability needed to report a step
+  refractory_s: 0.3 # per leg
+  match_tol_s: 0.067 # a prediction within 2 frames of a label = matched
+  device: cpu # cpu | mps
+  seed: 0
+  model_path: models/step_cnn.pt
+
+# ---------------- Stage 7: live mode ----------------
+# Live-tunable (parameters page): train.threshold, train.refractory_s, live.lookahead_s,
+# live.bout_min_steps, live.bout_max_gap_s, live.flash_s, live.plot_window_s. Everything in train: else needs a retrain.
+live:
+  buffer_s: 4.0 # IMU history the model runs over on each update
+  lookahead_s:
+    0.25 # call a step after this much IMU past it. Full certainty = half the
+    # receptive field (0.64 s); 0.3 s kept every step within 30 ms of
+    # offline on both 2026-11-03 sessions at ~0.39 s total delay
+  update_hz: 15 # how often the model runs
+  plot_window_s: 10
+  cadence_window_s: 10 # steps/min measured over this window
+  flash_s: 0.35 # step flash length
+  bout_min_steps: 1 # only count steps once this many come in a walking rhythm ...
+  bout_max_gap_s: 1.5 # ... each within this of the last (ankle twitches never qualify)
+  bout_need_both_legs: true # ... from both legs (tapping one foot never qualifies)
+  replay_latency_ms: 36 # replay mode adds this (measured MQTT latency) to "now"
+
+# ---------------- Stage 8: distance ----------------
+distance:
+  leg_length_m: 1.016      # floor to hip bone (user: 40 in)
+  ankle_height_m: 0.07     # MediaPipe ankle sits ~7 cm above the floor
+  prior_step_m: 0.63       # user's Apple Health step length at ~4.3 km/h
+  prior_cadence_spm: 114   # ... at this cadence (4.3 km/h / 0.63 m): walk ratio 0.0055 m per step/min
+  min_straight_s: 1.0      # straight walking stretch (no turning) used as a ground-truth "pass"
+  walking_speed_frac: 0.6  # hips moving > this x the session's typical speed = walking
+  step_gap_s: [0.25, 1.2]  # time to previous step that counts as walking (for cadence)
+  stride_s: [0.6, 2.0]     # IMU-leg strike to next IMU-leg strike (for the swing angle)
+  params_path: models/distance.json
