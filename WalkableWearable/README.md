@@ -1,7 +1,8 @@
-# ME193WalkWearable — shin-mounted IMU step counter
+# Walkable Wearable — shin-mounted IMU step counter
 
-The UNO Q on the shin streams IMU data over MQTT. The laptop does everything
-else: acquisition, webcam, MediaPipe labeling, PyTorch training, live UI.
+The UNO Q on the shin streams IMU data over MQTT; its code is in
+[ArduinoUnoQ/](ArduinoUnoQ/). The laptop does everything else (this folder):
+acquisition, webcam, MediaPipe labeling, PyTorch training, live UI.
 Built as standalone stages, each with its own test; a stage starts only after
 the previous one passes. Every tunable value is in [config.yaml](config.yaml).
 
