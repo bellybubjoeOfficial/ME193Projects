@@ -1,0 +1,30 @@
+# Shin IMU -> MQTT streamer (user service; installed by scripts/install.sh).
+#
+#   systemctl --user status shin-imu
+#   journalctl --user -u shin-imu -f
+#
+# Runs at boot without a login because lingering is enabled for the user
+# (loginctl enable-linger arduino). The MCU must be running the shin_imu
+# sketch: scripts/flash_sketch.sh.
+
+[Unit]
+Description=Shin IMU streamer (UNO Q MCU -> MQTT)
+# The streamer retries both the router socket and the broker on its own,
+# so no hard ordering on the network is needed.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=%h/shin-step-counter/device
+# Optional secrets, e.g. SHIN_IMU_MQTT_PASSWORD=...
+EnvironmentFile=-%h/.config/shin-imu/env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/.venvs/shin-imu/bin/python -m streamer --config %h/shin-step-counter/device/config/streamer.toml
+Restart=always
+RestartSec=2
+# Give the shutdown path time to flush buffered samples and publish offline.
+TimeoutStopSec=15
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=default.target

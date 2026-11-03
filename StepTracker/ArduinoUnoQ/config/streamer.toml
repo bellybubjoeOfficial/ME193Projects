@@ -1,0 +1,32 @@
+# Shin IMU streamer config. Read at start-up by `python -m streamer --config <this file>`.
+# After editing: systemctl --user restart shin-imu
+
+[mqtt]
+# The laptop running Mosquitto. Its address changes when the laptop changes
+# network: check it with `ipconfig` / `ip addr` on the laptop.
+# The laptop's mosquitto.conf needs `listener 1883 0.0.0.0` (Mosquitto 2.x
+# listens only on localhost otherwise) plus `allow_anonymous true` or a user.
+host = "10.243.108.241"
+port = 1883
+keepalive_s = 5            # a dead link is detected within ~1.5x this
+client_id = "unoq-shin-streamer"
+topic_prefix = "wearable"
+qos = 1
+max_inflight = 20          # unacknowledged data messages before we wait
+# username = "shin"
+# Password: put SHIN_IMU_MQTT_PASSWORD=... in ~/.config/shin-imu/env (not here).
+
+[device]
+name = "unoq-shin"
+
+[stream]
+rate_hz = 100              # 25 | 50 | 100 | 200
+batch_size = 10            # samples per wearable/imu/raw message
+buffer_seconds = 300       # kept while the broker is unreachable (>= 60)
+autostart = true           # start a session as soon as the service starts
+# Bench testing without a sensor: if no IMU is found, the MCU sends a test
+# pattern (status/diag report source = "synthetic"). Keep false for real use.
+synthetic_if_no_imu = false
+
+[router]
+socket = "/var/run/arduino-router.sock"
